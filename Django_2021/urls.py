@@ -14,10 +14,12 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path, include
+from django.contrib.auth.decorators import login_required
+from django.urls import path, include, re_path
 from rest_framework import routers
 from django.conf import settings
 from django.conf.urls.static import static
+from universal_import import views
 
 router = routers.DefaultRouter()
 
@@ -26,6 +28,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
     path('upload/', include('universal_import.urls')),
+    path('download/',views.model_form_download),
     path('', include('home.urls'))
 ]
 
