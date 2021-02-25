@@ -7,8 +7,6 @@ from universal_import.models import Document
 
 def model_form_upload(request):
     if request.user.is_authenticated and request.user.is_staff:
-        print("here")
-        print(request.user.is_authenticated)
         if request.method == 'POST':
             form = DocumentForm(request.POST, request.FILES)
             if form.is_valid():
@@ -30,9 +28,11 @@ def model_form_download(request):
                 form = Document.objects.first()
             except Document.DoesNotExist:
                 raise Http404("No Document matches the given query.")
+        form.delete()
         return render(request, 'model_form_download.html', {
             'form': form
         })
+
     else:
         return render(request, 'login_error.html')
 
