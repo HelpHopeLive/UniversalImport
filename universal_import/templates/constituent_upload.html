@@ -8,12 +8,7 @@
 <body>
   <form method="post" enctype="multipart/form-data">
     {% csrf_token %}
-    <ul>
-        <h4>Registration Export</h4>
-        <li>{{ form.registrations }}</li>
-        <h4>Donation Export</h4>
-        <li>{{ form.donations }}</li>
-    </ul>
+    {{ form.document }}
     <button type="submit">Upload</button>
   </form>
   <p><a href="{% url 'home' %}">Return to home</a></p>

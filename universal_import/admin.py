@@ -5,7 +5,7 @@ from .models import Document,Team, ConstituentFile
 import pandas as pd
 
 class uploadAdmin(admin.ModelAdmin):  # add this
-  list_display = ('document', 'constituents', 'gifts', 'gifts_attr')
+  list_display = ('registrations', 'donations', 'constituents', 'gifts', 'gifts_attr')
 
 class teamAdmin(admin.ModelAdmin):
   list_display = ('number', 'title', 'leader', 'fund_id')
