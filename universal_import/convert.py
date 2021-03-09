@@ -22,7 +22,7 @@ def convert(RR_Reg, RR_Don):
     racerosterreg = pd.read_csv(RR_Reg)
     racerosterdon = pd.read_csv(RR_Don)
     racerosterreg['ntaf'] = pd.Series()
-    #to track when a constituent is found and shoul dbe dropped from the constituent export
+    #to track when a constituent is found and should be dropped from the constituent export
     racerosterreg['found_constituent'] = pd.Series()
     racerosterdon['ntaf'] = pd.Series()
     #executes env.py to grab os.env variables
@@ -60,18 +60,16 @@ def convert(RR_Reg, RR_Don):
     #    return registration_data
 
 
-    const_cols = ["ImportID", "PrimAddText", "PrimSalText", "ConsID", "KeyInd", "LastName", "FirstName", "AddrLines", "AddrCity", "AddrState", "AddrZIP", "PhoneNum", "PhoneNum.1", "PhoneType.1"]
+    const_cols = ["ImportID", "PrimAddText", "PrimSalText", "ConsID", "KeyInd", "LastName", "FirstName", "AddrLines", "AddrCity", "AddrState", "AddrZIP", "PhoneNum.0", "PhoneType.0", "PhoneNum.1", "PhoneType.1"]
     gifts_cols = ["GFTAmt","GFType", "FundID", "GFDate", "ConsID", "GFImpID"]
     gifts_attr_cols = ["GFAttrCat", "GFAttrDesc", "GFImpID"]
     #existing_constituents = clean_phones(existing_constituents)
 
     def find_matching_emails(email):
-        found = False
         constituent_id = None
         constituent = None
         if(email):
             constituent = existing_constituents.loc[existing_constituents['Email address'] == email]
-            found = True
         if(len(constituent) > 0):
             constituent_id = constituent['Constituent ID'].values[0]
         return constituent_id
@@ -81,7 +79,19 @@ def convert(RR_Reg, RR_Don):
         constituent_id = None
         existing_constituents.head()
         constituent = existing_constituents.loc[existing_constituents['Phone'] == number]
+        if constituent.empty:
+            us_number = str(number)[1:]
+            constituent = existing_constituents.loc[existing_constituents['Phone'] == int(us_number)]
         if(len(constituent)>0):
+            constituent_id = constituent['Constituent ID'].values[0]
+        return constituent_id
+
+    def find_matching_name(first, last):
+        constituent = None
+        constituent_id = None
+        existing_constituents.head()
+        constituent = existing_constituents.loc[existing_constituents['Name'].str.lower() == ((first + " " + last).lower())]
+        if (len(constituent) > 0):
             constituent_id = constituent['Constituent ID'].values[0]
         return constituent_id
 
@@ -96,9 +106,12 @@ def convert(RR_Reg, RR_Don):
         c_id = ("RR-" + str(source_id))
         return c_id
 
-    def generate_gift_code(event_id, confirmation_num):
+    def generate_gift_code(event_id, confirmation_num, participant_id):
         g_id = None
-        g_id = (str(event_id) + str(confirmation_num))
+        if isinstance(participant_id, str):
+            g_id = (str(event_id) + str(confirmation_num) + ((participant_id[-1]) + participant_id[-2]))
+        else:
+            g_id = (str(event_id) + str(confirmation_num) + str(participant_id))
         return g_id
 
     def registration_gift_describer(row):
@@ -160,7 +173,6 @@ def convert(RR_Reg, RR_Don):
         return output_data
 
 
-
     def gift_dropper(gifts, gifts_attr):
         g_code = None
         for i, row in gifts.iterrows():
@@ -179,7 +191,6 @@ def convert(RR_Reg, RR_Don):
                 return constituent_id
 
 
-
     #redo this, some constituents will have the RR- once these start importing
     def constituent_dropper(racerosterreg,constituents):
         for i, row in racerosterreg.iterrows():
@@ -187,7 +198,6 @@ def convert(RR_Reg, RR_Don):
                 for j, row_second in constituents.iterrows():
                     if ((row_second['FirstName'] + " " + row_second['LastName']).lower()) == ((row['First Name'] + ' ' + row['Last Name']).lower()):
                         constituents.drop(j, inplace=True)
-
 
 
     #This will fill the django campaigns pandas structure
@@ -242,18 +252,10 @@ def convert(RR_Reg, RR_Don):
                     print("didnt find a team , assuming unrestricted")
                     source_data.loc[i, 'ntaf'] = "HHL25"
 
-
-
-
-
     #to be expanded later on
     def scan_for_existing(constituents, existing_constituents):
             similarities = 0
             total_factors = 8
-
-
-
-
 
     fill_registration_ntaf_codes(racerosterreg)
     team_gen(racerosterreg)
@@ -280,21 +282,33 @@ def convert(RR_Reg, RR_Don):
             constituent_id = find_matching_emails(row['Email'])
             if constituent_id != None:
                 racerosterreg.loc[i, 'found_constituent'] = True
+        if constituent_id == None:
+            constituent_id = find_matching_name(row['First Name'], row['Last Name'])
+            if constituent_id != None:
+                racerosterreg.loc[i, 'found_constituent'] = True
         if (constituent_id == None):
             #generate const id here
             constituent_id = generate_constituent_id(row['Unique participant ID'])
         #generate gift code
-        g_code = generate_gift_code(row['Event ID'], row['Confirmation No.'])
+        g_code = generate_gift_code(row['Event ID'], row['Confirmation No.'], row['Unique participant ID'])
         fund_id = row['ntaf']
 
-        if not np.isnan(row['Sponsor name for acknowledgement']):
+        if not (row['Sponsor name for acknowledgement']):
             gift_desc = sponsor_gift_describer(row)
         else:
             gift_desc = registration_gift_describer(row)
 
             # swag handler here
+
+
         if int(row['Swag Total']) != 0:
             medal_qty = int(row['Medal (Quantity)'])
+            if (int(row['Swag Total'] - 15) == 2):
+                swag_gift = pd.DataFrame({'GFTAmt': [2], 'GFType': ["Cash"], 'FundID': [fund_id],'GFDate': [date_time_obj.strftime('%m/%d/%Y')], 'ConsID': [constituent_id],'GFImpID': [(g_code + str(0))]})
+                gifts = gifts.append(swag_gift, ignore_index=True)
+                swag_gift_attr = pd.DataFrame({'GFAttrCat': ["Gift Code"], 'GFAttrDesc': [swag_gift_describer(row)],'GFImpID': [(g_code  + str(0))]})
+                gifts_attr = gifts_attr.append(swag_gift_attr, ignore_index=True)
+
             while medal_qty != 0 and not np.isnan(medal_qty):
                 swag_gift = pd.DataFrame({'GFTAmt': [15], 'GFType': ["Cash"], 'FundID': [fund_id], 'GFDate': [date_time_obj.strftime('%m/%d/%Y')], 'ConsID': [constituent_id], 'GFImpID': [(g_code + str(medal_qty) + str(1))]})
                 gifts = gifts.append(swag_gift, ignore_index=True)
@@ -314,7 +328,7 @@ def convert(RR_Reg, RR_Don):
                                                    'GFImpID': [(g_code + str(medal_qty) + str(2))]})
                     gifts_attr = gifts_attr.append(swag_gift_attr, ignore_index=True)
                     paid_shirt_qty-=1
-        constituent = pd.DataFrame({'ImportID':[''],'PrimAddText': [prim_add], 'PrimSalText': [prim_sal], 'ConsID': [constituent_id], 'KeyInd':['I'], 'LastName': row['Last Name'], 'FirstName': row['First Name'],'AddrLines': row['Address'], 'AddrCity': row['City'], 'AddrState': row['State'], 'AddrZIP':row['ZIP/Postal Code'], 'PhoneNum': row['Phone Number'], 'PhoneNum.1': row['Email'], 'PhoneType.1':'Email'})
+        constituent = pd.DataFrame({'ImportID':[''],'PrimAddText': [prim_add], 'PrimSalText': [prim_sal], 'ConsID': [constituent_id], 'KeyInd':['I'], 'LastName': row['Last Name'], 'FirstName': row['First Name'],'AddrLines': row['Address'], 'AddrCity': row['City'], 'AddrState': row['State'], 'AddrZIP':row['ZIP/Postal Code'], "PhoneType.0" : "Home Phone", 'PhoneNum.0': row['Phone Number'], 'PhoneNum.1': row['Email'], 'PhoneType.1':'Email'})
         constituents = constituents.append(constituent, ignore_index=True)
 
         gift = pd.DataFrame({'GFTAmt' : row['Registration Total'],'GFType':"Cash", 'FundID': [fund_id], 'GFDate': [date_time_obj.strftime('%m/%d/%Y')], 'ConsID': [constituent_id], 'GFImpID': [g_code]})
@@ -338,17 +352,19 @@ def convert(RR_Reg, RR_Don):
             constituent_id = find_matching_emails(row['Email address'])
             print(constituent_id)
         if constituent_id == None:
+            constituent_id = find_matching_name(row['Donor first name'], row['Donor last name'])
+        if constituent_id == None:
             constituent_id = find_previously_generated_constituent(constituents, row)
         if (constituent_id == None):
             #generate const id here
             constituent_id = generate_constituent_id(str(row['Transaction ID']))
 
-        g_code = (generate_gift_code(row['Event ID'], row['Transaction ID']) + str(3))
+        g_code = (generate_gift_code( row['Event ID'], str(row['Transaction ID']), 3))
         donation_constituent = pd.DataFrame(
             {'ImportID': [''], 'PrimAddText': [prim_add], 'PrimSalText': [prim_sal], 'ConsID': [constituent_id],
              'KeyInd': ['I'], 'LastName': row['Donor last name'], 'FirstName': row['Donor first name'], 'AddrLines': row['Address'],
              'AddrCity': row['City'], 'AddrState': row['Subdivision'], 'AddrZIP': row['Postal code'],
-             'PhoneNum': row['Phone number'], 'PhoneNum.1': row['Email address'], 'PhoneType.1': 'Email'})
+             'PhoneNum.0': row['Phone number'], 'PhoneType.0':"Home Phone", 'PhoneNum.1': row['Email address'], 'PhoneType.1': 'Email'})
         constituents = constituents.append(donation_constituent, ignore_index=True)
 
         donation = pd.DataFrame({'GFTAmt': row['Received(less fees)'], 'GFType': ["Cash"], 'FundID': row['ntaf'],
@@ -360,9 +376,10 @@ def convert(RR_Reg, RR_Don):
 
     constituent_dropper(racerosterreg, constituents)
     constituents=duped_constituent_scanner(constituents)
+
     gift_dropper(gifts, gifts_attr)
-    gifts = gifts.drop_duplicates()
-    gifts_attr = gifts_attr.drop_duplicates()
+    #gifts = gifts.drop_duplicates()
+    #gifts_attr = gifts_attr.drop_duplicates()
 
     today = date.today()
     const_label = ("constituents" + '-' + str(today) + ".csv")
